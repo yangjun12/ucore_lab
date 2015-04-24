@@ -396,6 +396,25 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
+//yangj
+    // get the pde index by PDX(la)
+    // get the pde entry by the pgdir[index]
+    pde_t *pdep = &pgdir[PDX(la)];
+    if (!(*pdep & PTE_P)) {
+        struct Page *newpage;
+        if (!create || (newpage = alloc_page()) == NULL) {
+            return NULL;
+        }
+        set_page_ref(newpage, 1);
+        //reference ++
+        uintptr_t pa = page2pa(newpage);
+        memset(KADDR(pa), 0, PGSIZE);
+        // clear page content using memset
+        *pdep = pa | PTE_U | PTE_W | PTE_P;
+        // user , writable ,present
+        //set flag
+    }
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -416,7 +435,7 @@ get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
 //note: PT is changed, so the TLB need to be invalidate 
 static inline void
 page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
-    /* LAB2 EXERCISE 3: YOUR CODE
+    /* LAB2 EXERCISE 3: 2012011400
      *
      * Please check if ptep is valid, and tlb must be manually updated if mapping is updated
      *
@@ -441,6 +460,20 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+//yangj
+    // delete it only is not present
+    if (*ptep & PTE_P) {
+        struct Page *page = pte2page(*ptep);
+        // if the page_ref_dec()==0 just free it
+        if (page_ref_dec(page) == 0) {
+            free_page(page);
+        }
+        //in any case, we must clean the entry
+        *ptep = 0;
+        // Invalidate the TLB entry
+        tlb_invalidate(pgdir, la);
+    }
+
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte

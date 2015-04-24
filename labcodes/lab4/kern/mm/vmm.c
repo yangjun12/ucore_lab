@@ -344,7 +344,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     ret = -E_NO_MEM;
 
     pte_t *ptep=NULL;
-    /*LAB3 EXERCISE 1: YOUR CODE
+    /*LAB3 EXERCISE 1:2012011400
     * Maybe you want help comment, BELOW comments can help you finish the code
     *
     * Some Useful MACROs and DEFINEs, you can use them in below implementation.
@@ -362,14 +362,14 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *
     */
 #if 0
-    /*LAB3 EXERCISE 1: YOUR CODE*/
+    /*LAB3 EXERCISE 1: 2012011400*/
     ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     if (*ptep == 0) {
                             //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
 
     }
     else {
-    /*LAB3 EXERCISE 2: YOUR CODE
+    /*LAB3 EXERCISE 2: 2012011400
     * Now we think this pte is a  swap entry, we should load data from disk to a page with phy addr,
     * and map the phy addr with logical addr, trigger swap manager to record the access situation of this page.
     *
@@ -393,7 +393,30 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
-   ret = 0;
+ ptep=get_pte(mm->pgdir,addr,perm);
+ if(ptep==NULL){
+	 goto failed;
+ }
+ if (*ptep == 0) {
+        //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+       struct Page* newpage=pgdir_alloc_page(mm->pgdir,addr,perm);
+       if(newpage == NULL){
+    	   goto failed;
+       }
+ }else{
+     if(swap_init_ok) {
+         struct Page *page=NULL;
+        ret=swap_in(mm,addr,&page);
+        if(ret!=0){
+        	goto failed;
+        }
+        page_insert(mm->pgdir,page,addr,perm);
+        swap_map_swappable(mm,addr,page,1);
+     }else{
+    	 goto failed;
+     }
+ }
+ret = 0;
 failed:
     return ret;
 }
