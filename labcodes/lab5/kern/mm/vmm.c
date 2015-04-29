@@ -452,14 +452,14 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *
     */
 #if 0
-    /*LAB3 EXERCISE 1: YOUR CODE*/
+    /*LAB3 EXERCISE 1: 2012011400*/
     ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     if (*ptep == 0) {
                             //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
 
     }
     else {
-    /*LAB3 EXERCISE 2: YOUR CODE
+    /*LAB3 EXERCISE 2: 2012011400
     * Now we think this pte is a  swap entry, we should load data from disk to a page with phy addr,
     * and map the phy addr with logical addr, trigger swap manager to record the access situation of this page.
     *
@@ -493,7 +493,65 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
-   ret = 0;
+ ptep=get_pte(mm->pgdir,addr,1);
+ if(ptep==NULL){
+	 goto failed;
+ }
+/*
+ if (*ptep == 0) {
+        //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+       struct Page* newpage=pgdir_alloc_page(mm->pgdir,addr,perm);
+       if(newpage == NULL){
+    	   goto failed;
+       }
+ }else{
+     if(swap_init_ok) {
+         struct Page *page=NULL;
+        ret=swap_in(mm,addr,&page);
+        if(ret!=0){
+        	goto failed;
+        }
+        page_insert(mm->pgdir,page,addr,perm);
+        swap_map_swappable(mm,addr,page,1);
+     }else{
+    	 goto failed;
+     }
+ }
+*/
+if (*ptep == 0) { // if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+        if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
+            cprintf("pgdir_alloc_page in do_pgfault failed\n");
+            goto failed;
+        }
+    }
+    else {
+        struct Page *page=NULL;
+        cprintf("do pgfault: ptep %x, pte %x\n",ptep, *ptep);
+        if (*ptep & PTE_P) {
+            //if process write to this existed readonly page (PTE_P means existed), then should be here now.
+            //we can implement the delayed memory space copy for fork child process (AKA copy on write, COW).
+            //we didn't implement now, we will do it in future.
+            panic("error write a non-writable pte");
+            //page = pte2page(*ptep);
+        } else{
+           // if this pte is a swap entry, then load data from disk to a page with phy addr
+           // and call page_insert to map the phy addr with logical addr
+           if(swap_init_ok) {               
+               if ((ret = swap_in(mm, addr, &page)) != 0) {
+                   cprintf("swap_in in do_pgfault failed\n");
+                   goto failed;
+               }    
+
+           }  
+           else {
+            cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+            goto failed;
+           }
+       } 
+       page_insert(mm->pgdir, page, addr, perm);
+       swap_map_swappable(mm, addr, page, 1);
+   }
+ret = 0;
 failed:
     return ret;
 }
