@@ -396,6 +396,25 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
+//yangj
+    // get the pde index by PDX(la)
+    // get the pde entry by the pgdir[index]
+    pde_t *pdep = &pgdir[PDX(la)];
+    if (!(*pdep & PTE_P)) {
+        struct Page *newpage;
+        if (!create || (newpage = alloc_page()) == NULL) {
+            return NULL;
+        }
+        set_page_ref(newpage, 1);
+        //reference ++
+        uintptr_t pa = page2pa(newpage);
+        memset(KADDR(pa), 0, PGSIZE);
+        // clear page content using memset
+        *pdep = pa | PTE_U | PTE_W | PTE_P;
+        // user , writable ,present
+        //set flag
+    }
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -406,7 +425,7 @@ get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
         *ptep_store = ptep;
     }
     if (ptep != NULL && *ptep & PTE_P) {
-        return pa2page(*ptep);
+        return pte2page(*ptep);
     }
     return NULL;
 }
@@ -416,7 +435,7 @@ get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
 //note: PT is changed, so the TLB need to be invalidate 
 static inline void
 page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
-    /* LAB2 EXERCISE 3: YOUR CODE
+    /* LAB2 EXERCISE 3: 2012011400
      *
      * Please check if ptep is valid, and tlb must be manually updated if mapping is updated
      *
@@ -441,6 +460,19 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+//yangj
+    // delete it only is not present
+    if (*ptep & PTE_P) {
+        struct Page *page = pte2page(*ptep);
+        // if the page_ref_dec()==0 just free it
+        if (page_ref_dec(page) == 0) {
+            free_page(page);
+        }
+        //in any case, we must clean the entry
+        *ptep = 0;
+        // Invalidate the TLB entry
+        tlb_invalidate(pgdir, la);
+    }
 }
 
 void
@@ -522,6 +554,12 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
          * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
          * (4) build the map of phy addr of  nage with the linear addr start
          */
+        void * kva_src = page2kva(page);
+        void * kva_dst = page2kva(npage);
+    
+        memcpy(kva_dst, kva_src, PGSIZE);
+
+        ret = page_insert(to, npage, start, perm);
         assert(ret == 0);
         }
         start += PGSIZE;
@@ -625,7 +663,7 @@ check_pgdir(void) {
 
     pte_t *ptep;
     assert((ptep = get_pte(boot_pgdir, 0x0, 0)) != NULL);
-    assert(pa2page(*ptep) == p1);
+    assert(pte2page(*ptep) == p1);
     assert(page_ref(p1) == 1);
 
     ptep = &((pte_t *)KADDR(PDE_ADDR(boot_pgdir[0])))[1];
@@ -643,7 +681,7 @@ check_pgdir(void) {
     assert(page_ref(p1) == 2);
     assert(page_ref(p2) == 0);
     assert((ptep = get_pte(boot_pgdir, PGSIZE, 0)) != NULL);
-    assert(pa2page(*ptep) == p1);
+    assert(pte2page(*ptep) == p1);
     assert((*ptep & PTE_U) == 0);
 
     page_remove(boot_pgdir, 0x0);
@@ -654,8 +692,8 @@ check_pgdir(void) {
     assert(page_ref(p1) == 0);
     assert(page_ref(p2) == 0);
 
-    assert(page_ref(pa2page(boot_pgdir[0])) == 1);
-    free_page(pa2page(boot_pgdir[0]));
+    assert(page_ref(pde2page(boot_pgdir[0])) == 1);
+    free_page(pde2page(boot_pgdir[0]));
     boot_pgdir[0] = 0;
 
     cprintf("check_pgdir() succeeded!\n");
@@ -689,7 +727,7 @@ check_boot_pgdir(void) {
     assert(strlen((const char *)0x100) == 0);
 
     free_page(p);
-    free_page(pa2page(PDE_ADDR(boot_pgdir[0])));
+    free_page(pde2page(boot_pgdir[0]));
     boot_pgdir[0] = 0;
 
     cprintf("check_boot_pgdir() succeeded!\n");
