@@ -14,7 +14,7 @@
 *****************iobuf_skip        change the current position of io buffer
 ******************sysfile_seek  seek file  
 ```
-###在一个进程结束实，会关闭相应的文件，当程序退出时，会将fs和vfs都退出###
+###在一个进程结束时，会关闭相应的文件，当程序退出时，会将fs和vfs都退出###
 ```
 *************  files_destroy      Called when a proc exit 
 *************  fs_cleanup
